@@ -1,0 +1,612 @@
+// ==UserScript==
+// @name         Google Form Auto-Submit - Multiple Choice Only with GUI (Personal Testing)
+// @namespace    http://tampermonkey.net/
+// @version      4.8
+// @description  Auto-submit your own Google Form with random multiple choice selections only - with GUI controls and auto-repeat
+// @author       saio
+// @match        https://docs.google.com/forms/*/viewform*
+// @match        https://docs.google.com/forms/*/formResponse*
+// @grant        none
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    // Load configuration from localStorage or use defaults
+    const CONFIG = {
+        autoSubmit: localStorage.getItem('formAutoFill_autoSubmit') === 'true' || false,
+        delay: parseInt(localStorage.getItem('formAutoFill_delay')) || 1000,
+        autoStart: false,
+        autoRepeat: localStorage.getItem('formAutoFill_autoRepeat') === 'true' || false,
+        repeatDelay: parseInt(localStorage.getItem('formAutoFill_repeatDelay')) || 2000,
+    };
+
+    // Save configuration to localStorage
+    function saveConfig() {
+        localStorage.setItem('formAutoFill_autoSubmit', CONFIG.autoSubmit);
+        localStorage.setItem('formAutoFill_delay', CONFIG.delay);
+        localStorage.setItem('formAutoFill_autoRepeat', CONFIG.autoRepeat);
+        localStorage.setItem('formAutoFill_repeatDelay', CONFIG.repeatDelay);
+    }
+
+    // Random helper functions
+    const RANDOM = {
+        choice: (array) => array[Math.floor(Math.random() * array.length)],
+        number: (min, max) => Math.floor(Math.random() * (max - min + 1)) + min,
+    };
+
+    // Check if we're on the response page
+    function isResponsePage() {
+        return window.location.href.includes('formResponse');
+    }
+
+    // Handle response page - click "Submit another response"
+    function handleResponsePage() {
+        console.log('On response page, looking for "Submit another response" link...');
+
+        // Wait a bit for the page to fully load
+        setTimeout(() => {
+            // Look for the "Submit another response" link
+            const submitAnotherLink = Array.from(document.querySelectorAll('a')).find(a =>
+                a.textContent.includes('Submit another response') ||
+                a.textContent.includes('submit another response') ||
+                a.href.includes('viewform')
+            );
+
+            if (submitAnotherLink) {
+                console.log('Found "Submit another response" link');
+                if (CONFIG.autoRepeat) {
+                    console.log(`Auto-repeat enabled, clicking in ${CONFIG.repeatDelay}ms...`);
+                    setTimeout(() => {
+                        submitAnotherLink.click();
+                    }, CONFIG.repeatDelay);
+                } else {
+                    console.log('Auto-repeat disabled, showing manual GUI');
+                    createResponsePageGUI(submitAnotherLink);
+                }
+            } else {
+                console.log('Could not find "Submit another response" link');
+            }
+        }, 1000);
+    }
+
+    // Create GUI for response page
+    function createResponsePageGUI(submitAnotherLink) {
+        // Create style element
+        const style = document.createElement('style');
+        style.textContent = `
+            #formAutoFillResponseGUI {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #1a1a1a;
+                border: 1px solid #2d2d2d;
+                color: #fff;
+                padding: 20px;
+                border-radius: 4px;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.8);
+                z-index: 10000;
+                font-family: 'Tahoma', sans-serif;
+                min-width: 280px;
+            }
+            #formAutoFillResponseGUI h3 {
+                margin: 0 0 15px 0;
+                font-size: 14px;
+                font-weight: 600;
+                text-align: center;
+                color: #a8b2d1;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            #formAutoFillResponseGUI button {
+                width: 100%;
+                padding: 10px;
+                margin: 8px 0;
+                border: 1px solid #3d3d3d;
+                border-radius: 2px;
+                font-size: 12px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                background: #2d2d2d;
+                color: #a8b2d1;
+            }
+            #formAutoFillResponseGUI button:hover {
+                background: #3d3d3d;
+                border-color: #a8b2d1;
+                color: #fff;
+            }
+            #formAutoFillResponseGUI .status {
+                margin-top: 12px;
+                padding: 8px;
+                background: #0f0f0f;
+                border: 1px solid #2d2d2d;
+                border-radius: 2px;
+                font-size: 11px;
+                text-align: center;
+                color: #6b7280;
+            }
+            #formAutoFillResponseGUI .credit {
+                margin-top: 15px;
+                padding-top: 15px;
+                border-top: 1px solid #2d2d2d;
+                text-align: center;
+                font-size: 11px;
+                color: #4b5563;
+                font-style: italic;
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Create GUI container
+        const gui = document.createElement('div');
+        gui.id = 'formAutoFillResponseGUI';
+
+        // Create title
+        const title = document.createElement('h3');
+        title.textContent = '✓ Form Submitted';
+        gui.appendChild(title);
+
+        // Submit another button
+        const submitAnotherBtn = document.createElement('button');
+        submitAnotherBtn.textContent = 'Submit Another Response';
+        submitAnotherBtn.addEventListener('click', () => {
+            submitAnotherLink.click();
+        });
+        gui.appendChild(submitAnotherBtn);
+
+        // Status
+        const status = document.createElement('div');
+        status.className = 'status';
+        status.textContent = 'Click button to continue';
+        gui.appendChild(status);
+
+        // Credit
+        const credit = document.createElement('div');
+        credit.className = 'credit';
+        credit.textContent = 'by: saio';
+        gui.appendChild(credit);
+
+        document.body.appendChild(gui);
+    }
+
+    // Create GUI using DOM methods (bypasses TrustedHTML requirement)
+    function createGUI() {
+        // Create style element
+        const style = document.createElement('style');
+        style.textContent = `
+            #formAutoFillGUI {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #1a1a1a;
+                border: 1px solid #2d2d2d;
+                color: #fff;
+                padding: 20px;
+                border-radius: 4px;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.8);
+                z-index: 10000;
+                font-family: 'Tahoma', sans-serif;
+                min-width: 280px;
+            }
+            #formAutoFillGUI h3 {
+                margin: 0 0 15px 0;
+                font-size: 14px;
+                font-weight: 600;
+                text-align: center;
+                color: #a8b2d1;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            #formAutoFillGUI .control-group {
+                margin: 12px 0;
+                padding: 12px;
+                background: #0f0f0f;
+                border: 1px solid #2d2d2d;
+                border-radius: 2px;
+            }
+            #formAutoFillGUI label {
+                display: flex;
+                align-items: center;
+                cursor: pointer;
+                font-size: 12px;
+                margin-bottom: 10px;
+                color: #9ca3af;
+                transition: color 0.2s;
+            }
+            #formAutoFillGUI label:hover {
+                color: #a8b2d1;
+            }
+            #formAutoFillGUI input[type="checkbox"] {
+                margin-right: 10px;
+                cursor: pointer;
+                width: 16px;
+                height: 16px;
+                accent-color: #a8b2d1;
+            }
+            #formAutoFillGUI input[type="number"] {
+                width: 80px;
+                padding: 6px 8px;
+                border: 1px solid #2d2d2d;
+                border-radius: 2px;
+                background: #0f0f0f;
+                color: #a8b2d1;
+                font-size: 12px;
+                margin-left: 10px;
+                font-family: 'Tahoma', sans-serif;
+            }
+            #formAutoFillGUI input[type="number"]:focus {
+                outline: none;
+                border-color: #a8b2d1;
+            }
+            #formAutoFillGUI button {
+                width: 100%;
+                padding: 10px;
+                margin: 6px 0;
+                border: 1px solid #3d3d3d;
+                border-radius: 2px;
+                font-size: 12px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                font-family: 'Tahoma', sans-serif;
+            }
+            #formAutoFillGUI .btn-fill {
+                background: #2d2d2d;
+                color: #a8b2d1;
+            }
+            #formAutoFillGUI .btn-fill:hover {
+                background: #3d3d3d;
+                border-color: #a8b2d1;
+                color: #fff;
+            }
+            #formAutoFillGUI .btn-submit {
+                background: #2d2d2d;
+                color: #fbbf24;
+            }
+            #formAutoFillGUI .btn-submit:hover {
+                background: #3d3d3d;
+                border-color: #fbbf24;
+                color: #fff;
+            }
+            #formAutoFillGUI .btn-reset {
+                background: #2d2d2d;
+                color: #ef4444;
+            }
+            #formAutoFillGUI .btn-reset:hover {
+                background: #3d3d3d;
+                border-color: #ef4444;
+                color: #fff;
+            }
+            #formAutoFillGUI .status {
+                margin-top: 12px;
+                padding: 8px;
+                background: #0f0f0f;
+                border: 1px solid #2d2d2d;
+                border-radius: 2px;
+                font-size: 11px;
+                text-align: center;
+                min-height: 20px;
+                color: #6b7280;
+            }
+            #formAutoFillGUI .delay-control {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                font-size: 12px;
+                color: #9ca3af;
+            }
+            #formAutoFillGUI .credit {
+                margin-top: 15px;
+                padding-top: 15px;
+                border-top: 1px solid #2d2d2d;
+                text-align: center;
+                font-size: 11px;
+                color: #4b5563;
+                font-style: italic;
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Create GUI container
+        const gui = document.createElement('div');
+        gui.id = 'formAutoFillGUI';
+
+        // Create title
+        const title = document.createElement('h3');
+        title.textContent = 'Form Auto-Fill';
+        gui.appendChild(title);
+
+        // Create control group
+        const controlGroup = document.createElement('div');
+        controlGroup.className = 'control-group';
+
+        // Auto-submit checkbox
+        const autoSubmitLabel = document.createElement('label');
+        const autoSubmitCheck = document.createElement('input');
+        autoSubmitCheck.type = 'checkbox';
+        autoSubmitCheck.id = 'autoSubmitCheck';
+        autoSubmitCheck.checked = CONFIG.autoSubmit;
+        autoSubmitLabel.appendChild(autoSubmitCheck);
+        autoSubmitLabel.appendChild(document.createTextNode('Auto Submit & Repeat'));
+        controlGroup.appendChild(autoSubmitLabel);
+
+        // Delay control
+        const delayControl = document.createElement('div');
+        delayControl.className = 'delay-control';
+        const delayLabel = document.createElement('span');
+        delayLabel.textContent = 'Delay (ms):';
+        const delayInput = document.createElement('input');
+        delayInput.type = 'number';
+        delayInput.id = 'delayInput';
+        delayInput.value = CONFIG.delay;
+        delayInput.min = '0';
+        delayInput.step = '100';
+        delayControl.appendChild(delayLabel);
+        delayControl.appendChild(delayInput);
+        controlGroup.appendChild(delayControl);
+
+        // Repeat delay control
+        const repeatDelayControl = document.createElement('div');
+        repeatDelayControl.className = 'delay-control';
+        const repeatDelayLabel = document.createElement('span');
+        repeatDelayLabel.textContent = 'Repeat Delay:';
+        const repeatDelayInput = document.createElement('input');
+        repeatDelayInput.type = 'number';
+        repeatDelayInput.id = 'repeatDelayInput';
+        repeatDelayInput.value = CONFIG.repeatDelay;
+        repeatDelayInput.min = '0';
+        repeatDelayInput.step = '100';
+        repeatDelayControl.appendChild(repeatDelayLabel);
+        repeatDelayControl.appendChild(repeatDelayInput);
+        controlGroup.appendChild(repeatDelayControl);
+
+        gui.appendChild(controlGroup);
+
+        // Fill button
+        const fillBtn = document.createElement('button');
+        fillBtn.className = 'btn-fill';
+        fillBtn.id = 'fillBtn';
+        fillBtn.textContent = 'Fill Form';
+        gui.appendChild(fillBtn);
+
+        // Submit button
+        const submitBtn = document.createElement('button');
+        submitBtn.className = 'btn-submit';
+        submitBtn.id = 'submitBtn';
+        submitBtn.textContent = 'Submit Now';
+        gui.appendChild(submitBtn);
+
+        // Reset button
+        const resetBtn = document.createElement('button');
+        resetBtn.className = 'btn-reset';
+        resetBtn.id = 'resetBtn';
+        resetBtn.textContent = 'Reset Form';
+        gui.appendChild(resetBtn);
+
+        // Status div
+        const statusDiv = document.createElement('div');
+        statusDiv.className = 'status';
+        statusDiv.id = 'statusDiv';
+        statusDiv.textContent = 'Ready';
+        gui.appendChild(statusDiv);
+
+        // Credit
+        const credit = document.createElement('div');
+        credit.className = 'credit';
+        credit.textContent = 'by: saio';
+        gui.appendChild(credit);
+
+        document.body.appendChild(gui);
+
+        // Event listeners
+        autoSubmitCheck.addEventListener('change', (e) => {
+            CONFIG.autoSubmit = e.target.checked;
+            CONFIG.autoRepeat = e.target.checked; // Automatically link them together
+            saveConfig(); // Save to localStorage
+            updateStatus('Auto-submit & repeat ' + (CONFIG.autoSubmit ? 'enabled' : 'disabled'));
+        });
+
+        delayInput.addEventListener('change', (e) => {
+            CONFIG.delay = parseInt(e.target.value) || 1000;
+            saveConfig(); // Save to localStorage
+            updateStatus(`Delay set to ${CONFIG.delay}ms`);
+        });
+
+        repeatDelayInput.addEventListener('change', (e) => {
+            CONFIG.repeatDelay = parseInt(e.target.value) || 2000;
+            saveConfig(); // Save to localStorage
+            updateStatus(`Repeat delay set to ${CONFIG.repeatDelay}ms`);
+        });
+
+        fillBtn.addEventListener('click', () => {
+            autoFillForm();
+        });
+
+        submitBtn.addEventListener('click', () => {
+            submitForm();
+        });
+
+        resetBtn.addEventListener('click', () => {
+            resetForm();
+        });
+    }
+
+    // Update status message
+    function updateStatus(message) {
+        const statusDiv = document.getElementById('statusDiv');
+        if (statusDiv) {
+            statusDiv.textContent = message;
+            setTimeout(() => {
+                if (statusDiv.textContent === message) {
+                    statusDiv.textContent = 'Ready';
+                }
+            }, 3000);
+        }
+        console.log(message);
+    }
+
+    // Wait for element
+    function waitForElement(selector, callback) {
+        const element = document.querySelector(selector);
+        if (element) {
+            callback(element);
+        } else {
+            setTimeout(() => waitForElement(selector, callback), 100);
+        }
+    }
+
+    // Fill radio buttons (random selection)
+    function fillRadioButtons() {
+        const radioGroups = document.querySelectorAll('[role="radiogroup"]');
+        let count = 0;
+
+        radioGroups.forEach((group, index) => {
+            const radios = Array.from(group.querySelectorAll('[role="radio"]'));
+            if (radios.length > 0) {
+                const randomRadio = RANDOM.choice(radios);
+                if (randomRadio.getAttribute('aria-checked') !== 'true') {
+                    randomRadio.click();
+                    count++;
+                }
+            }
+        });
+
+        return count;
+    }
+
+    // Fill checkboxes (random selection, may select multiple)
+    function fillCheckboxes() {
+        const checkboxGroups = document.querySelectorAll('[role="group"]');
+        let count = 0;
+
+        checkboxGroups.forEach(group => {
+            const checkboxes = Array.from(group.querySelectorAll('[role="checkbox"]'));
+            if (checkboxes.length > 0) {
+                const numToSelect = RANDOM.number(1, Math.max(1, checkboxes.length));
+                const shuffled = checkboxes.sort(() => Math.random() - 0.5);
+
+                for (let i = 0; i < numToSelect; i++) {
+                    if (shuffled[i].getAttribute('aria-checked') !== 'true') {
+                        shuffled[i].click();
+                        count++;
+                    }
+                }
+            }
+        });
+
+        return count;
+    }
+
+    // Fill dropdown menus (random option)
+    function fillDropdowns() {
+        const dropdowns = document.querySelectorAll('[role="listbox"]');
+        let count = 0;
+
+        dropdowns.forEach((dropdown, index) => {
+            setTimeout(() => {
+                dropdown.click();
+                setTimeout(() => {
+                    const options = Array.from(document.querySelectorAll('[role="option"]'));
+                    if (options.length > 1) {
+                        const validOptions = options.slice(1);
+                        if (validOptions.length > 0) {
+                            RANDOM.choice(validOptions).click();
+                            count++;
+                        }
+                    }
+                }, 200);
+            }, index * 400);
+        });
+
+        return dropdowns.length;
+    }
+
+    // Find and click submit button with multiple strategies
+    function submitForm() {
+        console.log('Looking for submit button...');
+
+        // Strategy 1: Look for button with type="submit"
+        let submitButton = document.querySelector('button[type="submit"]');
+
+        // Strategy 2: Look for any button with "Submit" text
+        if (!submitButton) {
+            const buttons = Array.from(document.querySelectorAll('button, div[role="button"]'));
+            submitButton = buttons.find(btn =>
+                btn.textContent.toLowerCase().includes('submit') ||
+                btn.textContent.toLowerCase().includes('enviar')
+            );
+        }
+
+        // Strategy 3: Look for submit span with specific class
+        if (!submitButton) {
+            submitButton = document.querySelector('span.appsMaterialWizButtonPaperbuttonLabel');
+        }
+
+        // Strategy 4: Look for the parent of the submit span
+        if (!submitButton) {
+            const submitSpan = document.querySelector('span.appsMaterialWizButtonPaperbuttonLabel');
+            if (submitSpan) {
+                submitButton = submitSpan.closest('div[role="button"]');
+            }
+        }
+
+        if (submitButton) {
+            console.log('Found submit button:', submitButton);
+            updateStatus('Submitting form...');
+            submitButton.click();
+        } else {
+            console.log('Submit button not found! Trying to find all buttons on page:');
+            const allButtons = document.querySelectorAll('button, div[role="button"], span[role="button"]');
+            console.log('All buttons found:', allButtons);
+            updateStatus('Submit button not found!');
+        }
+    }
+
+    // Reset form
+    function resetForm() {
+        updateStatus('Reloading form...');
+        location.reload();
+    }
+
+    // Main function
+    function autoFillForm() {
+        updateStatus('Filling form...');
+
+        const radioCount = fillRadioButtons();
+        const checkboxCount = fillCheckboxes();
+        const dropdownCount = fillDropdowns();
+
+        const total = radioCount + checkboxCount + dropdownCount;
+        updateStatus(`Filled ${total} question(s)`);
+
+        if (CONFIG.autoSubmit) {
+            setTimeout(() => {
+                submitForm();
+            }, CONFIG.delay + 1500); // Increased delay for dropdowns
+        }
+    }
+
+    // Initialize
+    if (isResponsePage()) {
+        // We're on the response page
+        handleResponsePage();
+    } else {
+        // We're on the form page
+        waitForElement('form', () => {
+            createGUI();
+
+            // If auto-submit is enabled, automatically start filling
+            if (CONFIG.autoSubmit) {
+                updateStatus('Auto-submit enabled - Starting...');
+                setTimeout(autoFillForm, 1000);
+            } else {
+                updateStatus('Form detected - Ready!');
+            }
+        });
+    }
+})();
